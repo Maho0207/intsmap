@@ -275,20 +275,33 @@ function readCache() { try { return JSON.parse(localStorage.getItem(CACHE_KEY) |
 function writeCache(h, data) { try { localStorage.setItem(CACHE_KEY, JSON.stringify({ h, data })) } catch (e) { } }
 function computeAsync(text, onProg) { return new Promise((resolve, reject) => { let gen; try { gen = RosenEngine.runGen(text) } catch (e) { reject(e); return }
   const step = () => { try { const t0 = performance.now(); let r; while (performance.now() - t0 < 30) { r = gen.next(); if (r.done) return; onProg && onProg(r.value); if (r.value.result) { resolve(r.value.result); return } } setTimeout(step, 0) } catch (e) { reject(e) } }; setTimeout(step, 0) }) }
-(async function start() {
-  const cache = readCache();
-  if (PRE && PRE.data) { render(PRE.data); setStatus("保存済みデータ（" + (PRE.builtAt || "") + "）で表示中") }
-  else if (cache) { render(cache.data); setStatus("前回取得したデータで表示中") }
-  if (!CONFIG.sheetUrl) { if (!PRE) setStatus("データがありません。config.js にシートのURLを設定してください。", true); return }
+let fetching = false;
+const refBtn = $("#refreshBtn");
+async function refreshFromSheet(manual) {
+  if (fetching || !CONFIG.sheetUrl) return; fetching = true; refBtn.disabled = true; refBtn.textContent = "取得中…";
+  const finish = () => { fetching = false; refBtn.disabled = false; refBtn.textContent = "シートから最新データを取得" };
+  setStatus("シート159を取得しています…");
   let text;
   try { const r = await fetch(CONFIG.sheetUrl, { cache: "no-store" }); if (!r.ok) throw new Error("HTTP " + r.status); text = await r.text();
     if (!/駅名/.test(text)) throw new Error("シートの内容ではありません") }
-  catch (e) { setStatus("シートを取得できませんでした（" + e.message + "）。保存済みデータで表示中", true); return }
+  catch (e) { setStatus("シートを取得できませんでした（" + e.message + "）。表示中のデータのままです", true); finish(); return }
   const h = hash(text), now = new Date().toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
-  if (PRE && PRE.csvHash === h) { setStatus("最新のシートで表示中（" + now + " 確認）"); return }
-  if (cache && cache.h === h) { render(cache.data); setStatus("最新のシートで表示中（" + now + " 確認）"); return }
+  if (shownHash === h) { setStatus((manual ? "変更はありません。" : "") + "最新のシートで表示中（" + now + " 確認）"); finish(); return }
+  const cache = readCache();
+  if (cache && cache.h === h) { const keep = selId; render(cache.data); shownHash = h; if (keep && N[keep]) select(keep, false); setStatus("最新のシートで表示中（" + now + " 確認）"); finish(); return }
   setStatus("シートが更新されています。駅の配置を計算中…");
   try { const data = await computeAsync(text, v => setStatus("シートが更新されています。" + v.t + "… " + Math.round(v.p * 100) + "%"));
-    const keepSel = selId; render(data); writeCache(h, data); setStatus("最新のシートで表示中（" + now + " 取得）"); if (keepSel && N[keepSel]) select(keepSel, false) }
-  catch (e) { setStatus("シートの読み込みに失敗しました（" + e.message + "）。保存済みデータで表示中", true) }
+    const keep = selId, keepLine = lineSel; render(data); shownHash = h; writeCache(h, data);
+    if (keepLine !== null && D.routes[keepLine]) selectLine(keepLine); if (keep && N[keep]) select(keep, false);
+    setStatus("最新のシートで表示中（" + now + " 取得）") }
+  catch (e) { setStatus("シートの読み込みに失敗しました（" + e.message + "）。表示中のデータのままです", true) }
+  finish() }
+refBtn.onclick = () => refreshFromSheet(true);
+let shownHash = null;
+(function start() {
+  const cache = readCache();
+  if (PRE && PRE.data) { render(PRE.data); shownHash = PRE.csvHash; setStatus("保存済みデータ（" + (PRE.builtAt || "") + "）で表示中") }
+  else if (cache) { render(cache.data); shownHash = cache.h; setStatus("前回取得したデータで表示中") }
+  if (!CONFIG.sheetUrl) { refBtn.hidden = true; if (!PRE && !cache) setStatus("データがありません。config.js にシートのURLを設定してください。", true); return }
+  if (CONFIG.autoFetch !== false) refreshFromSheet(false);
 })();
