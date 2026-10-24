@@ -37,7 +37,7 @@ var RosenEngine = (function () {
       var r = table[i].map(function (s) { return s.trim(); });
       if (r.indexOf('駅名') >= 0 && r.indexOf('駅番号') >= 0) { h = i; break; }
     }
-    if (h < 0) throw new Error('見出し行（「駅名」「駅番号」を含む行）が見つかりません。シート159の1行目から含めて読み込んでください。');
+    if (h < 0) throw new Error('見出し行（「駅名」「駅番号」を含む行）が見つかりません。路線図用シートの1行目から含めて読み込んでください。');
     var hd = table[h].map(function (s) { return s.trim(); });
     var ix = function (n) { return hd.indexOf(n); };
     var iCode = hd.findIndex(function (s) { return /^駅(ｺｰﾄﾞ|コード)$/.test(s); });

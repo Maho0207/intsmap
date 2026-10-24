@@ -245,7 +245,7 @@ drop.onclick = () => file.click(); drop.onkeydown = e => { if (e.key === "Enter"
 drop.ondragover = e => { e.preventDefault(); drop.classList.add("over") }; drop.ondragleave = () => drop.classList.remove("over");
 drop.ondrop = e => { e.preventDefault(); drop.classList.remove("over"); const f = e.dataTransfer.files[0]; if (f) readFile(f) };
 file.onchange = () => { if (file.files[0]) readFile(file.files[0]) };
-$("#runBtn").onclick = () => { const t = $("#paste").value; if (!t.trim()) { msg.textContent = "貼り付け欄が空です。シート159を全選択してコピーし、貼り付けてください。"; return } runText(t) };
+$("#runBtn").onclick = () => { const t = $("#paste").value; if (!t.trim()) { msg.textContent = "貼り付け欄が空です。路線図用シートを全選択してコピーし、貼り付けてください。"; return } runText(t) };
 async function readFile(f) { const buf = await f.arrayBuffer(); let t = new TextDecoder("utf-8").decode(buf);
   if ((t.match(/\uFFFD/g) || []).length > 5) { try { t = new TextDecoder("shift_jis").decode(buf) } catch (e) { } } runText(t) }
 function showCheck(c) {
@@ -280,7 +280,7 @@ const refBtn = $("#refreshBtn");
 async function refreshFromSheet(manual) {
   if (fetching || !CONFIG.sheetUrl) return; fetching = true; refBtn.disabled = true; refBtn.textContent = "取得中…";
   const finish = () => { fetching = false; refBtn.disabled = false; refBtn.textContent = "シートから最新データを取得" };
-  setStatus("シート159を取得しています…");
+  setStatus("路線図用シートを取得しています…");
   let text;
   try { const r = await fetch(CONFIG.sheetUrl, { cache: "no-store" }); if (!r.ok) throw new Error("HTTP " + r.status); text = await r.text();
     if (!/駅名/.test(text)) throw new Error("シートの内容ではありません") }

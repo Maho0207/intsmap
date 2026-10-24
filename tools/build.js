@@ -1,11 +1,11 @@
 // 使い方: node tools/build.js [CSVのパス]
-// シート159のCSVから駅の配置を計算し、data/prebuilt.js を作り直します。
+// 路線図用シートのCSVから駅の配置を計算し、data/prebuilt.js を作り直します。
 const fs = require('fs'), path = require('path');
 const root = path.join(__dirname, '..');
 const E = require(path.join(root, 'engine.js'));
 const csvPath = process.argv[2] || path.join(root, 'data', 'sheet.csv');
 const text = fs.readFileSync(csvPath, 'utf8');
-if (!/駅名/.test(text)) { console.error('CSVにシート159の見出しが見つかりません: ' + csvPath); process.exit(1); }
+if (!/駅名/.test(text)) { console.error('CSVに路線図用シートの見出しが見つかりません: ' + csvPath); process.exit(1); }
 function hash(t) { let h = 0x811c9dc5; for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 0x01000193); } return (h >>> 0).toString(16) + ':' + t.length; }
 const t0 = Date.now();
 const data = E.runSync(text);

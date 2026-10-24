@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>国際列車 路線図</title>
-<meta name="description" content="国際列車の路線図。シート159の駅データと座標から自動で描画します。">
+<meta name="description" content="国際列車の路線図。路線図用シートの駅データと座標から自動で描画します。">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🚆</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -221,15 +221,15 @@ button,input{font:inherit;color:inherit}
 <div id="tip"></div>
 <div id="dlg" role="dialog" aria-modal="true" aria-labelledby="dlgT"><div class="box">
   <h2 id="dlgT">CSVファイルを読み込んで確認</h2>
-  <p>地図はシート159から自動で最新のデータを読み込みます。ここでは、手元のCSVで描画やデータの確認ができます（この画面だけに反映されます）。</p>
+  <p>地図は路線図用シートから自動で最新のデータを読み込みます。ここでは、手元のCSVで描画やデータの確認ができます（この画面だけに反映されます）。</p>
   <ol>
-    <li>Googleスプレッドシートで「シート159」を開きます。</li>
+    <li>Googleスプレッドシート「路線図用」を開きます。</li>
     <li>「ファイル」→「ダウンロード」→「カンマ区切り形式（.csv）」で保存します。</li>
     <li>保存したファイルを下にドロップするか、クリックして選びます。</li>
   </ol>
   <div id="drop" tabindex="0" role="button">CSVファイルをここにドロップ、またはクリックして選択</div>
   <input id="file" type="file" accept=".csv,.tsv,.txt,text/csv" hidden>
-  <textarea id="paste" placeholder="または、シート159を全選択（Ctrl+A）してコピーし、ここに貼り付け"></textarea>
+  <textarea id="paste" placeholder="または、路線図用シートを全選択（Ctrl+A）してコピーし、ここに貼り付け"></textarea>
   <div id="prog"><i></i></div>
   <div id="msg"></div>
   <div id="chk"></div>

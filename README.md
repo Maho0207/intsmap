@@ -1,12 +1,12 @@
 # 国際列車 路線図
 
-シート159（国際列車総合データ）の駅データと座標から、路線図を自動で描くWebページです。
+スプレッドシート「路線図用」の駅データと座標から、路線図を自動で描くWebページです。
 GitHub Pages でそのまま公開できます。
 
 ## しくみ
 
 1. ページを開くと、まず `data/prebuilt.js`（計算済みの保存データ）で即座に表示します。
-2. `config.js` に Apps Script のURLがあれば、シート159の最新データを読み込みます（自動、または「シートから最新データを取得」ボタンで手動）。
+2. `config.js` に Apps Script のURLがあれば、路線図用シートの最新データを読み込みます（自動、または「シートから最新データを取得」ボタンで手動）。
 3. シートが保存データから変わっていれば、ブラウザで駅の配置を計算し直して描き直します（数秒）。
    計算結果はブラウザに保存されるので、シートが変わらない限り次回からは計算しません。
 
@@ -38,12 +38,12 @@ window.ROSEN_CONFIG = {
 
 - Settings → Secrets and variables → Actions → **Variables** に `SHEET_URL`（Apps Script のURL）を追加
 - Settings → Actions → General → Workflow permissions を「Read and write」に
-- Actions タブの「シート159から路線図データを更新」→「Run workflow」で手動実行もできます
+- Actions タブの「路線図用シートから路線図データを更新」→「Run workflow」で手動実行もできます
 
 ## 手元で保存データを作り直す
 Node.js 18 以上で:
 ```
-node tools/build.js 保存したシート159.csv
+node tools/build.js 保存した路線図用.csv
 ```
 `data/sheet.csv` と `data/prebuilt.js` が更新されます。
 
@@ -56,7 +56,7 @@ node tools/build.js 保存したシート159.csv
 | `config.js` | Apps Script のURL |
 | `data/prebuilt.js` | 計算済みの保存データ（自動生成） |
 | `data/sheet.csv` | 保存データの元になったCSV |
-| `apps-script/Code.gs` | シート159をCSVで返す Apps Script |
+| `apps-script/Code.gs` | 路線図用シートをCSVで返す Apps Script |
 | `tools/build.js` | 保存データを作るスクリプト |
 
 ## 路線の扱い（engine.js の `CFG`）
