@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>国際列車 路線図</title>
+<meta name="description" content="国際列車の路線図。シート159の駅データと座標から自動で描画します。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🚆</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#EDF1F4; --grid:#DCE3E9; --ink:#1A2230; --muted:#667283; --panel:#FFFFFF; --line:#C9D2DB;
+  --blue:#2A5BB0; --crimson:#AE2340; --halo:#EDF1F4; --sel:#1A2230; --planned:#9AA4B0;
+  color-scheme:light;
+  box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#0F141B; --grid:#18202A; --ink:#E3E8EF; --muted:#8C97A6; --panel:#18202A; --line:#2C3744;
+  --blue:#6E98E4; --crimson:#E2627C; --halo:#0F141B; --sel:#FFFFFF; --planned:#5E6977; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --paper:#0F141B; --grid:#18202A; --ink:#E3E8EF; --muted:#8C97A6; --panel:#18202A; --line:#2C3744;
+  --blue:#6E98E4; --crimson:#E2627C; --halo:#0F141B; --sel:#FFFFFF; --planned:#5E6977; color-scheme:dark;}
+*,*::before,*::after{box-sizing:inherit}
+html,body{height:100%;margin:0}
+body{background:var(--paper);color:var(--ink);font-family:"BIZ UDPGothic","Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic","Noto Sans JP","Noto Sans CJK JP",sans-serif;overflow:hidden;-webkit-font-smoothing:antialiased}
+#map{position:fixed;inset:0;width:100%;height:100%;touch-action:none;cursor:grab;display:block}
+#map.drag{cursor:grabbing}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+
+/* map styling */
+.edge{fill:none;stroke-linecap:round;stroke-width:var(--lw)}
+.edge.x{stroke-dasharray:calc(var(--lw)*1.6) calc(var(--lw)*1.4);stroke-width:calc(var(--lw)*.7)}
+.dim .edge:not(.on){opacity:.12}
+.dim .stn:not(.on),.dim .lab:not(.on),.dim .badge:not(.on){opacity:.18}
+.pin{transform:translate(var(--x),var(--y)) scale(var(--s))}
+.stn.k1{--s:var(--s1)}.stn.k2{--s:var(--s2)}.stn.k3{--s:var(--s3)}
+.stn circle,.stn rect{fill:var(--panel);stroke-width:2}
+.stn.c1 circle{stroke:var(--ink);stroke-width:3}
+.stn.xf circle{stroke:var(--ink)}
+.stn.sel circle,.stn.sel rect{stroke:var(--sel);stroke-width:4}
+.lab text{paint-order:stroke;stroke:var(--halo);stroke-width:3.5px;stroke-linejoin:round;fill:var(--ink)}
+.lab.t1 text{font-size:14px;font-weight:700}
+.lab.t2 text{font-size:11.5px;font-weight:700}
+.lab.t3 text{font-size:10px;fill:var(--muted)}
+.lab.hide{display:none}
+.lab .side{font-size:.78em;font-weight:400}
+.badge circle{stroke:var(--halo);stroke-width:2}
+.badge text{font-size:9px;font-weight:700;text-anchor:middle;dominant-baseline:central}
+.edgecap text{font-size:12px;fill:var(--muted)}
+.gl{stroke:var(--grid);stroke-width:var(--lw0);opacity:.7}
+.gl.major{stroke:var(--line)}
+.gcap text{font-size:11px;fill:var(--muted)}
+.showxz .stn.est circle{stroke:#D9822B!important;stroke-dasharray:2.5 2}
+.showxz .stn:not(.est) circle{fill:var(--ink)}
+.showxz .stn.c1:not(.est) circle,.showxz .stn.xf:not(.est) circle{fill:var(--ink)}
+#xzBtn{margin-top:10px;width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--paper);border:1px solid var(--line);border-radius:7px;padding:7px 10px;cursor:pointer;font-size:13px}
+#xzBtn[aria-pressed="true"]{outline:2px solid #D9822B;outline-offset:-1px}
+#xzBtn small{color:var(--muted)}
+.frame{fill:none;stroke:var(--line);stroke-dasharray:6 6;stroke-width:var(--lw0)}
+.framecap{fill:var(--muted);font-size:13px}
+.vcap text{font-size:13px;font-weight:700;letter-spacing:.12em}
+
+/* UI */
+.ui{position:fixed;z-index:5;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 6px 24px -12px rgba(10,20,40,.35)}
+#head{top:calc(12px + env(safe-area-inset-top,0px));left:12px;width:min(340px,calc(100% - 24px));padding:14px 14px 12px}
+#head h1{margin:0;font-size:20px;letter-spacing:.04em;display:flex;align-items:center;gap:10px}
+#head h1 .ring{width:22px;height:22px;border-radius:50%;background:conic-gradient(var(--blue) 0 50%,var(--crimson) 50% 100%);flex:none;position:relative}
+#head h1 .ring::after{content:"";position:absolute;inset:6px;border-radius:50%;background:var(--panel)}
+#head p{margin:4px 0 10px;color:var(--muted);font-size:12.5px}
+#q{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:7px;background:var(--paper);font-size:15px}
+#res{list-style:none;margin:6px 0 0;padding:0;max-height:40vh;overflow:auto}
+#res li button{width:100%;text-align:left;background:none;border:0;padding:7px 6px;border-radius:6px;cursor:pointer;display:flex;gap:8px;align-items:center}
+#res li button:hover,#res li button:focus-visible{background:var(--paper)}
+#res small{color:var(--muted)}
+.chip{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:20px;padding:0 5px;border-radius:10px;font-size:11px;font-weight:700;flex:none}
+#lines{top:calc(12px + env(safe-area-inset-top,0px));right:12px;width:230px;max-height:calc(100% - 24px - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));display:flex;flex-direction:column}
+#lines header{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line);font-weight:700;font-size:14px}
+#lines header button{background:none;border:0;cursor:pointer;color:var(--muted);font-size:12.5px}
+#lineList{list-style:none;margin:0;padding:6px;overflow:auto}
+#lineList button{width:100%;display:flex;align-items:center;gap:9px;background:none;border:0;padding:6px 6px;border-radius:6px;cursor:pointer;text-align:left;font-size:13.5px}
+#lineList button:hover{background:var(--paper)}
+#lineList button[aria-pressed="true"]{background:var(--paper);outline:1px solid var(--line)}
+#lineList .sw{width:26px;height:6px;border-radius:3px;flex:none}
+#lineList small{margin-left:auto;color:var(--muted);font-size:11.5px}
+#lineList .gate{font-size:10.5px;color:var(--crimson);margin-left:2px}
+#legend{left:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));padding:10px 12px;font-size:12px;display:grid;grid-template-columns:auto auto;gap:6px 16px}
+#legend div{display:flex;align-items:center;gap:7px;color:var(--muted)}
+#legend svg{flex:none}
+#zoom{right:12px;bottom:calc(12px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;overflow:hidden}
+#zoom button{width:40px;height:40px;background:none;border:0;cursor:pointer;font-size:18px}
+#zoom button+button{border-top:1px solid var(--line)}
+#card{left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom,0px));width:min(420px,calc(100% - 24px));padding:14px 16px;display:none}
+#card.open{display:block}
+#card .top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+#card h2{margin:0;font-size:22px;line-height:1.25}
+#card .yomi{color:var(--muted);font-size:12.5px;margin-top:2px}
+#card .meta{margin:10px 0 8px;font-size:13px;color:var(--muted)}
+#card .meta b{color:var(--ink);font-weight:700}
+#card .nums{display:flex;flex-wrap:wrap;gap:6px}
+#card .nums button{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--paper);border-radius:7px;padding:4px 8px 4px 4px;cursor:pointer;font-size:13px}
+#card .x{background:none;border:0;cursor:pointer;font-size:20px;color:var(--muted);line-height:1;padding:2px 4px}
+#card .note{margin-top:9px;font-size:12px;color:var(--muted)}
+.cls{display:inline-block;padding:1px 7px;border-radius:5px;font-size:12px;font-weight:700;margin-left:6px;vertical-align:3px}
+.cls.k1{background:var(--ink);color:var(--paper)}
+.cls.k2{border:1.5px solid var(--ink)}
+.cls.k3{border:1px solid var(--line);color:var(--muted)}
+#tip{position:fixed;z-index:6;pointer-events:none;background:var(--ink);color:var(--paper);font-size:12.5px;padding:5px 8px;border-radius:6px;display:none;white-space:nowrap}
+#linesBtn{display:none}
+@media (max-width:760px){
+  #lines{display:none;top:auto;bottom:calc(64px + env(safe-area-inset-bottom,0px));right:12px;left:12px;width:auto;max-height:55vh}
+  #lines.open{display:flex}
+  #linesBtn{display:block;right:64px;bottom:calc(12px + env(safe-area-inset-bottom,0px));height:40px;padding:0 14px;cursor:pointer;font-weight:700;font-size:14px}
+  #legend{display:none}
+  #head p{display:none}
+  #card{bottom:calc(64px + env(safe-area-inset-bottom,0px))}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+.edge.p{stroke:var(--planned);stroke-dasharray:calc(var(--lw)*1.3) calc(var(--lw)*1.1);stroke-width:calc(var(--lw)*.65)}
+.stn.pl circle{stroke:var(--planned)!important;fill:var(--paper)!important;stroke-dasharray:none!important}
+.lab.t4 text{font-size:10px;fill:var(--planned)}
+.chip.pl{background:var(--paper)!important;color:var(--muted)!important;border:1px dashed var(--planned)}
+#updBtn{margin-top:8px;width:100%;background:none;border:1px solid var(--line);border-radius:7px;padding:7px 10px;cursor:pointer;font-size:13px;text-align:left}
+#updBtn:hover{background:var(--paper)}
+#dlg{position:fixed;inset:0;z-index:20;display:none;align-items:center;justify-content:center;background:rgba(10,16,24,.45);padding:16px}
+#dlg.open{display:flex}
+#dlg .box{background:var(--panel);color:var(--ink);border-radius:12px;width:min(560px,100%);max-height:calc(100% - 32px);overflow:auto;padding:18px 20px;box-shadow:0 20px 60px -20px rgba(0,0,0,.5)}
+#dlg h2{margin:0 0 6px;font-size:18px}
+#dlg p,#dlg li{font-size:13.5px;line-height:1.65}
+#dlg ol{padding-left:1.3em;margin:6px 0 10px}
+#drop{border:2px dashed var(--line);border-radius:10px;padding:16px;text-align:center;font-size:13.5px;color:var(--muted);cursor:pointer}
+#drop.over{border-color:var(--blue);color:var(--ink)}
+#paste{width:100%;min-height:70px;margin-top:10px;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:12.5px;background:var(--paper);resize:vertical}
+.row{display:flex;gap:8px;justify-content:flex-end;margin-top:12px;flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:var(--paper);border-radius:8px;padding:8px 14px;cursor:pointer;font-size:13.5px}
+.btn.pri{background:var(--ink);color:var(--paper);border-color:var(--ink);font-weight:700}
+.btn:disabled{opacity:.5;cursor:default}
+#prog{height:6px;border-radius:3px;background:var(--paper);overflow:hidden;margin-top:12px;display:none}
+#prog i{display:block;height:100%;width:0;background:var(--blue);transition:width .2s}
+#msg{font-size:13px;margin-top:8px;min-height:1em}
+#chk{font-size:12.5px;margin-top:10px;border-top:1px solid var(--line);padding-top:10px}
+#chk details{margin:4px 0}
+#chk summary{cursor:pointer}
+#chk ul{margin:4px 0;padding-left:1.2em;max-height:140px;overflow:auto}
+
+@media (min-width:761px){#lines{width:300px}}
+@media (min-width:761px){#zoom{right:324px}}
+.tabs{display:flex;border-bottom:1px solid var(--line);padding:6px 6px 0;gap:4px}
+.tabs button{flex:1;background:none;border:0;border-bottom:3px solid transparent;padding:8px 6px;font-weight:700;font-size:14px;cursor:pointer;color:var(--muted)}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--ink)}
+.pane{display:flex;flex-direction:column;min-height:0;flex:1}
+.pane[hidden]{display:none}
+#paneL header{font-weight:400!important;font-size:12px!important;color:var(--muted)}
+#lineList small{text-align:right;line-height:1.25}
+.ssel{padding:10px 12px;border-bottom:1px solid var(--line)}
+.ssel select{width:100%;padding:7px 8px;border:1px solid var(--line);border-radius:7px;background:var(--paper);font-size:14px}
+#stList{overflow:auto;padding:4px 0 10px}
+.sum{padding:10px 12px 6px;font-size:12.5px;color:var(--muted)}
+.sum b{font-size:20px;color:var(--ink);font-weight:700}
+.sec{margin:10px 12px 4px;font-size:12px;font-weight:700;color:var(--muted);display:flex;justify-content:space-between}
+.st{display:grid;grid-template-columns:62px 1fr auto;gap:0 8px;align-items:center;width:100%;background:none;border:0;padding:5px 12px 5px 10px;text-align:left;cursor:pointer;font-size:13.5px;position:relative}
+.st:hover{background:var(--paper)}
+.st:disabled{cursor:default;background:none}
+.st .no{font-size:11.5px;color:var(--muted);display:flex;align-items:center;gap:5px}
+.st .no i{width:9px;height:9px;border-radius:50%;border:2px solid var(--lc);background:var(--panel);flex:none}
+.st.k1 .nm{font-weight:700}.st.k1 .no i{width:12px;height:12px;border-color:var(--ink);border-width:3px}
+.st.k2 .nm{font-weight:700}
+.st.un{color:var(--planned)}.st.un .no i{border-style:dashed;border-color:var(--planned)}
+.st .km{font-size:11.5px;color:var(--muted);text-align:right;white-space:nowrap}
+.st .km b{color:var(--ink);font-weight:700;font-size:12px}
+.gap{margin:0 12px 0 40px;font-size:11px;color:var(--muted);padding:1px 0 1px 10px;border-left:2px solid var(--lc)}
+.gap.na{border-left-style:dashed;border-left-color:var(--planned)}
+.st .tags{display:flex;gap:3px;margin-top:2px;flex-wrap:wrap}
+.st .tags .chip{min-width:18px;height:15px;font-size:9.5px;padding:0 4px}
+#status{margin-top:10px;font-size:12px;color:var(--muted);line-height:1.5}
+#status.warn{color:var(--crimson)}
+</style>
+</head>
+<body>
+<svg id="map" role="img" aria-label="国際列車の路線図"><defs>
+<linearGradient id="gB" x1="0" x2="1"><stop offset="0" stop-color="var(--blue)" stop-opacity=".22"/><stop offset="1" stop-color="var(--blue)" stop-opacity="0"/></linearGradient>
+<linearGradient id="gC" x1="1" x2="0"><stop offset="0" stop-color="var(--crimson)" stop-opacity=".22"/><stop offset="1" stop-color="var(--crimson)" stop-opacity="0"/></linearGradient>
+<linearGradient id="gCL" x1="0" x2="1"><stop offset="0" stop-color="var(--crimson)" stop-opacity=".22"/><stop offset="1" stop-color="var(--crimson)" stop-opacity="0"/></linearGradient>
+<linearGradient id="gBR" x1="1" x2="0"><stop offset="0" stop-color="var(--blue)" stop-opacity=".22"/><stop offset="1" stop-color="var(--blue)" stop-opacity="0"/></linearGradient>
+</defs><g id="world"><g id="grid"></g><g id="bg"></g><g id="eg"></g><g id="sg"></g><g id="bgd"></g><g id="lg"></g></g></svg>
+
+<section id="head" class="ui">
+  <h1><span class="ring" aria-hidden="true"></span>国際列車 路線図</h1>
+  <p>開業済み <span id="cnt"></span>。座標が入力された駅はその位置に、未入力の駅は路線のつながりから推定した位置に描いています。灰色の点線は座標入力済みの未開業区間です。グリッドは1マス10,000ブロック、上が北です。</p>
+  <input id="q" type="search" placeholder="駅名・よみ・駅番号で探す" autocomplete="off" aria-label="駅を検索">
+  <ul id="res"></ul>
+  <button id="xzBtn" type="button" aria-pressed="false"><span>座標の入力状況を表示</span><small id="xzCnt"></small></button>
+  <div id="status" role="status"></div>
+  <button id="updBtn" type="button">CSVファイルを読み込んで確認…</button>
+</section>
+<aside id="lines" class="ui" aria-label="路線と駅一覧">
+  <div class="tabs" role="tablist">
+    <button id="tabL" role="tab" type="button" aria-selected="true" aria-controls="paneL">路線</button>
+    <button id="tabS" role="tab" type="button" aria-selected="false" aria-controls="paneS">駅一覧</button>
+  </div>
+  <div id="paneL" role="tabpanel" class="pane">
+    <header><span>路線を選ぶと地図で強調します</span><button id="clearLine" type="button">選択を解除</button></header>
+    <ul id="lineList"></ul>
+  </div>
+  <div id="paneS" role="tabpanel" class="pane" hidden>
+    <div class="ssel"><select id="lineSel" aria-label="駅一覧を表示する路線"></select></div>
+    <div id="stList"></div>
+  </div>
+</aside>
+<div id="legend" class="ui" aria-label="凡例"></div>
+<button id="linesBtn" class="ui" type="button" aria-expanded="false">路線</button>
+<div id="zoom" class="ui"><button id="zin" type="button" aria-label="拡大">＋</button><button id="zout" type="button" aria-label="縮小">－</button><button id="zfit" type="button" aria-label="全体を表示" style="font-size:14px">全体</button></div>
+<section id="card" class="ui" aria-live="polite"></section>
+<div id="tip"></div>
+<div id="dlg" role="dialog" aria-modal="true" aria-labelledby="dlgT"><div class="box">
+  <h2 id="dlgT">CSVファイルを読み込んで確認</h2>
+  <p>地図はシート159から自動で最新のデータを読み込みます。ここでは、手元のCSVで描画やデータの確認ができます（この画面だけに反映されます）。</p>
+  <ol>
+    <li>Googleスプレッドシートで「シート159」を開きます。</li>
+    <li>「ファイル」→「ダウンロード」→「カンマ区切り形式（.csv）」で保存します。</li>
+    <li>保存したファイルを下にドロップするか、クリックして選びます。</li>
+  </ol>
+  <div id="drop" tabindex="0" role="button">CSVファイルをここにドロップ、またはクリックして選択</div>
+  <input id="file" type="file" accept=".csv,.tsv,.txt,text/csv" hidden>
+  <textarea id="paste" placeholder="または、シート159を全選択（Ctrl+A）してコピーし、ここに貼り付け"></textarea>
+  <div id="prog"><i></i></div>
+  <div id="msg"></div>
+  <div id="chk"></div>
+  <div class="row">
+    <button id="dlgClose" class="btn" type="button">閉じる</button>
+    <button id="runBtn" class="btn pri" type="button">貼り付けた内容で描き直す</button>
+  </div>
+</div></div>
+
+<script src="config.js"></script>
+<script src="data/prebuilt.js"></script>
+<script src="engine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
