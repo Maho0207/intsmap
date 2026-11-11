@@ -31,7 +31,7 @@ function render(data) {
     vcap(-PAD + 34, (leftBlue ? "ブルー" : "クリムゾン") + "地区側 ― 惑星を一周して右端へつづく", leftBlue ? "var(--blue)" : "var(--crimson)");
     vcap(D.W + PAD - 34, (leftBlue ? "クリムゾン" : "ブルー") + "地区側 ― 惑星を一周して左端へつづく", leftBlue ? "var(--crimson)" : "var(--blue)");
     D.nodes.filter(n => n.gate).forEach(n => { const s = n.x < D.W / 2 ? -1 : 1; const blue = n.side === "ブルー側";
-      el("line", { x1: n.x, y1: n.y, x2: n.x + s * (PAD - 70), y2: n.y, stroke: blue ? "var(--blue)" : "var(--crimson)", style: "stroke-dasharray:calc(var(--lw)*1.2) calc(var(--lw)*1.2);stroke-width:calc(var(--lw)*.8)" }, bg); });
+      el("line", { x1: n.x, y1: n.y, x2: n.x + s * (n.xz ? 160 : PAD - 70), y2: n.y, stroke: blue ? "var(--blue)" : "var(--crimson)", style: "stroke-dasharray:calc(var(--lw)*1.2) calc(var(--lw)*1.2);stroke-width:calc(var(--lw)*.8)" }, bg); });
   }
   if (D.small.length) {
     const x0 = Math.min(...D.small.map(r => r[0])) - 60, y0 = Math.min(...D.small.map(r => r[1])) - 70, x1 = Math.max(...D.small.map(r => r[2])) + 90, y1 = Math.max(...D.small.map(r => r[3])) + 50;
@@ -72,7 +72,7 @@ function render(data) {
     const R = rFor(n) + 13; el("circle", { cx: t.dx * R, cy: t.dy * R, r: 9, fill: LC[t.L] }, g); const tx = el("text", { x: t.dx * R, y: t.dy * R + .5, fill: fg(LC[t.L]) }, g); tx.textContent = t.L; g._L = t.L });
   /* line list */
   const ll = $("#lineList"); ll.replaceChildren();
-  D.lines.forEach(l => { const st = lineStats(l.L), li = document.createElement("li"); li.innerHTML = `<button type="button" aria-pressed="false" data-l="${l.L}"><span class="sw" style="background:${l.color}"></span>${lname(l.L)}${l.L === 7 || l.L === 26 ? '<span class="gate">ゲート</span>' : ''}<small>${l.n}駅<br>${kmText(st)}</small></button>`; ll.appendChild(li) });
+  D.lines.forEach(l => { const st = lineStats(l.L), li = document.createElement("li"); li.innerHTML = `<button type="button" aria-pressed="false" data-l="${l.L}"><span class="sw" style="background:${l.color}"></span>${lname(l.L)}${gateTag(l.L)}<small>${l.n}駅<br>${kmText(st)}</small></button>`; ll.appendChild(li) });
   const sel = $("#lineSel"); sel.innerHTML = `<option value="">路線を選んでください</option>` + D.lines.map(l => `<option value="${l.L}">${lname(l.L)}（${l.n}駅）</option>`).join("");
   renderStations(null);
   $("#xzCnt").textContent = `入力済み ${D.check.xz}／${D.check.stations}駅`;
@@ -83,7 +83,7 @@ function render(data) {
 const md = (a, b) => (Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1])) / 1000;
 const f1 = v => v.toFixed(1);
 function lineStats(L) { let km = 0, gaps = 0, any = false;
-  (D.routes[L] || []).forEach(sec => { if (sec.express) return; for (let i = 0; i + 1 < sec.items.length; i++) { const a = sec.items[i], b = sec.items[i + 1]; if (!a.open || !b.open) continue; if (a.xz && b.xz) { km += md(a.xz, b.xz); any = true } else gaps++ } });
+  (D.routes[L] || []).forEach(sec => { if (sec.express) return; for (let i = 0; i + 1 < sec.items.length; i++) { const a = sec.items[i], b = sec.items[i + 1]; if (!a.open || !b.open) continue; const d = sec.dist[i + 1]; if (d != null) { km += d; any = true } else gaps++ } });
   return { km, gaps, any } }
 function kmText(st) { return !st.any ? "距離未計測" : (st.gaps ? "≥" : "") + f1(st.km) + "km" }
 function nodeFor(id, L) { const c = [id, id + "#B", id + "#C"].map(k => N[k]).filter(Boolean); return c.find(n => n.lines.includes(L)) || c[0] || null }
@@ -99,7 +99,7 @@ function renderStations(L) {
     const rows = sec.items.map((it, i) => {
       let gap = "";
       if (i > 0) { const p = sec.items[i - 1], both = p.open && it.open;
-        if (p.xz && it.xz) { const d = md(p.xz, it.xz); if (both || sec.express) { cum += d; secKm += d } gap = `<div class="gap${both ? "" : " na"}">${f1(d)} km${both ? "" : "（未開業区間）"}</div>` }
+        const d = sec.dist[i]; if (d != null) { if (both || sec.express) { cum += d; secKm += d } gap = `<div class="gap${both ? "" : " na"}">${f1(d)} km${both ? "" : "（未開業区間）"}</div>` }
         else { if (both) broken = true; gap = `<div class="gap${both ? "" : " na"}">${both ? "距離不明（座標未入力）" : "未開業区間"}</div>` } }
       const n = nodeFor(it.id, L), cls = it.open ? (it.cls === 1 ? " k1" : it.cls <= 4 ? " k2" : "") : " un";
       const others = n && it.open ? n.lines.filter(x => x !== L).slice(0, 5).map(x => chip(x)).join("") : "";
@@ -115,6 +115,7 @@ function showTab(t) { const s = t === "S"; $("#tabL").setAttribute("aria-selecte
 $("#tabL").onclick = () => showTab("L"); $("#tabS").onclick = () => { showTab("S"); renderStations(lineSel) };
 $("#lineSel").onchange = e => { const v = e.target.value; selectLine(v === "" ? null : +v) };
 
+function gateTag(L) { const g = (D.gateLines || []).find(x => x.L === L); return g ? `<span class="gate">${g.planned ? "ゲート予定" : "ゲート"}</span>` : "" }
 function place(it, di) { const [ux, uy] = DIRS[di]; it.di = di; const R = it.r + 1;
   const x = ux * R, y = uy * R; it.tx.setAttribute("x", x.toFixed(1)); it.tx.setAttribute("y", (y + (uy > 0.5 ? it.h * .75 : uy < -0.5 ? -it.h * .15 : it.h * .32)).toFixed(1));
   it.tx.setAttribute("text-anchor", ux > 0.3 ? "start" : ux < -0.3 ? "end" : "middle");
@@ -185,9 +186,10 @@ function select(id, fly) {
   if (selId && stnEls[selId]) stnEls[selId].classList.remove("sel"); selId = id; const n = N[id]; stnEls[id].classList.add("sel");
   const clsTxt = n.planned ? `<span class="cls k3">未開業</span>` : n.cls === 1 ? `<span class="cls k1">1級</span>` : n.cls <= 4 ? `<span class="cls k2">${n.cls}級</span>` : `<span class="cls k3">${n.cls}級</span>`;
   let note = "";
-  if (n.gate) { const o = otherGate(n); if (o) note = `<div class="note">ゲート駅です。${n.name}の${o.side}は地図の${o.x < D.W / 2 ? "左端" : "右端"}にあります。<button type="button" id="jump" style="background:none;border:0;color:var(--blue);cursor:pointer;padding:0;text-decoration:underline">${o.side}へ移動</button></div>` }
+  if (n.gate && n.planned) note = `<div class="note">建設予定のゲート駅です。</div>`;
+  if (n.gate) { const o = otherGate(n); if (o) note = `<div class="note">${n.planned ? "建設予定の" : ""}ゲート駅です。${n.name}の${o.side}は${o.xz ? "別の地点" : "地図の" + (o.x < D.W / 2 ? "左端" : "右端")}にあります。<button type="button" id="jump" style="background:none;border:0;color:var(--blue);cursor:pointer;padding:0;text-decoration:underline">${o.side}へ移動</button></div>` }
   if (n.nums.some(x => x === "508-1" || x === "1401-1")) note += `<div class="note">速達車のみが停車する別線路上の駅です（点線）。</div>`;
-  const xzTxt = n.xz ? `座標 <b>x ${n.xz[0].toLocaleString()}　z ${n.xz[1].toLocaleString()}</b>` : n.gate ? "ゲート駅（地図の端に配置）" : "座標未入力（路線のつながりから推定した位置）";
+  const xzTxt = n.xz ? `${n.side ? n.side + "の" : ""}座標 <b>x ${n.xz[0].toLocaleString()}　z ${n.xz[1].toLocaleString()}</b>` : n.gate ? `${n.side}の座標は未入力（地図の端に配置）` : "座標未入力（路線のつながりから推定した位置）";
   card.innerHTML = `<div class="top"><div><h2>${n.name}${n.side ? `<span style="font-size:.6em;font-weight:400">（${n.side}）</span>` : ""}${clsTxt}</h2><div class="yomi">${n.yomi || ""}</div></div><button class="x" type="button" aria-label="閉じる">×</button></div>
   <div class="meta">所在国 <b>${n.country}</b>　支社 <b>${n.branch}</b><br>${xzTxt}</div>
   <div class="nums">${n.nums.map(x => { const L = lineOfNum(x); return `<button type="button" data-l="${L}">${chip(L)}<span>${x}</span></button>` }).join("")}${n.pnums.map(x => `<button type="button" disabled title="未開業区間">${chip(lineOfNum(x), lineOfNum(x), true)}<span>${x}</span></button>`).join("")}</div>${n.pnums.length && !n.planned ? `<div class="note">点線の枠の番号は、路線がまだこの駅まで開業していない区間です。</div>` : ""}${note}`;
@@ -275,6 +277,23 @@ function readCache() { try { return JSON.parse(localStorage.getItem(CACHE_KEY) |
 function writeCache(h, data) { try { localStorage.setItem(CACHE_KEY, JSON.stringify({ h, data })) } catch (e) { } }
 function computeAsync(text, onProg) { return new Promise((resolve, reject) => { let gen; try { gen = RosenEngine.runGen(text) } catch (e) { reject(e); return }
   const step = () => { try { const t0 = performance.now(); let r; while (performance.now() - t0 < 30) { r = gen.next(); if (r.done) return; onProg && onProg(r.value); if (r.value.result) { resolve(r.value.result); return } } setTimeout(step, 0) } catch (e) { reject(e) } }; setTimeout(step, 0) }) }
+/* シートの取得と、失敗したときの原因の切り分け */
+async function fetchSheet(url) {
+  if (/\/dev(\?|$)/.test(url)) throw new Error("URLが …/dev になっています。/dev はデプロイした本人しか使えないので、「デプロイを管理」に出ている …/exec のURLを config.js に入れてください");
+  if (!/^https:\/\/script\.google(usercontent)?\.com\//.test(url) && !/^(\.|\/|data\/)/.test(url)) throw new Error("config.js の sheetUrl が Apps Script のURL（https://script.google.com/macros/s/…/exec）ではありません");
+  let r;
+  try { r = await fetch(url, { cache: "no-store" }) }
+  catch (e) { throw new Error("Apps Script に接続できませんでした。よくある原因は、(1) デプロイの「アクセスできるユーザー」が「全員」になっていない、(2) デプロイ時の承認（アクセスを許可）が済んでいない、(3) 学校・会社のGoogleアカウントで外部公開が禁止されている、のいずれかです") }
+  if (!r.ok) throw new Error("HTTP " + r.status + (r.status === 404 ? "：URLが間違っているか、デプロイが削除されています" : ""));
+  const text = await r.text(), head = text.slice(0, 3000);
+  if (/^\s*</.test(head)) {
+    if (/accounts\.google|ServiceLogin|ログイン|Sign in/i.test(head)) throw new Error("Googleのログイン画面が返ってきました。デプロイの「アクセスできるユーザー」を「全員」にしてください");
+    if (/doGet/.test(head)) throw new Error("スクリプトに doGet が見つかりません。Code.gs を保存してから「新しいバージョン」でデプロイし直してください");
+    const m = head.replace(/<[^>]+>/g, " ").match(/(Exception|エラー|Error)[^。\n]{0,120}/);
+    throw new Error("Apps Script がエラーを返しました" + (m ? "（" + m[0].trim() + "）" : "") + "。Apps Script の「実行数」で詳細を確認できます");
+  }
+  if (!/駅名/.test(head)) throw new Error("受け取った内容に「駅名」の見出しがありません。Code.gs の SHEET_NAME（シート名）を確認してください");
+  return text }
 let fetching = false;
 const refBtn = $("#refreshBtn");
 async function refreshFromSheet(manual) {
@@ -282,9 +301,8 @@ async function refreshFromSheet(manual) {
   const finish = () => { fetching = false; refBtn.disabled = false; refBtn.textContent = "シートから最新データを取得" };
   setStatus("路線図用シートを取得しています…");
   let text;
-  try { const r = await fetch(CONFIG.sheetUrl, { cache: "no-store" }); if (!r.ok) throw new Error("HTTP " + r.status); text = await r.text();
-    if (!/駅名/.test(text)) throw new Error("シートの内容ではありません") }
-  catch (e) { setStatus("シートを取得できませんでした（" + e.message + "）。表示中のデータのままです", true); finish(); return }
+  try { text = await fetchSheet(CONFIG.sheetUrl) }
+  catch (e) { setStatus("シートを取得できませんでした：" + e.message + "（表示中のデータのままです）", true); console.warn("[路線図] 取得失敗", e); finish(); return }
   const h = hash(text), now = new Date().toLocaleString("ja-JP", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
   if (shownHash === h) { setStatus((manual ? "変更はありません。" : "") + "最新のシートで表示中（" + now + " 確認）"); finish(); return }
   const cache = readCache();

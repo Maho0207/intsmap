@@ -1,4 +1,4 @@
-var ROSEN_ENGINE_VERSION = 3;
+var ROSEN_ENGINE_VERSION = 5;
 /* 国際列車 路線図エンジン: CSV → 描画データ（ブラウザとビルドで共用） */
 var RosenEngine = (function () {
   var CFG = {
@@ -7,7 +7,8 @@ var RosenEngine = (function () {
     express: { '508-1': ['平山南', '一花海岸'], '1401-1': ['中陸中央', '水那'] },
     gates: [
       { name: '黒紺島', crimson: ['クリムゾン橋入口', 'クリムゾン南黒紺海底'] },
-      { name: '鰆光ゲート', crimson: ['光海'] }
+      { name: '鰆光ゲート', crimson: ['光海'] },
+      { name: '水鐘ゲート', crimson: ['南鐘島海底'] }   // 建設予定（ブルー側の隣：砦﨑海岸）
     ],
     U: 3000, SC: 45
   };
@@ -42,6 +43,7 @@ var RosenEngine = (function () {
     var ix = function (n) { return hd.indexOf(n); };
     var iCode = hd.findIndex(function (s) { return /^駅(ｺｰﾄﾞ|コード)$/.test(s); });
     var iNums = []; hd.forEach(function (s, j) { if (s === '駅番号') iNums.push(j); });
+    var iXC = hd.findIndex(function (s) { return /クリムゾン/.test(s) && /[xｘＸ]/i.test(s); }), iZC = hd.findIndex(function (s) { return /クリムゾン/.test(s) && /[zｚＺ]/i.test(s); });
     var iName = ix('駅名'), iYomi = ix('読み'), iCty = ix('所在国'), iBr = ix('支社'), iCls = ix('級'), iX = ix('x座標'), iZ = ix('z座標');
     var out = [], warn = { invalid: [], partial: [] };
     for (var k = h + 1; k < table.length; k++) {
@@ -57,20 +59,24 @@ var RosenEngine = (function () {
       var xn = parseFloat(xs), zn = parseFloat(zs);
       if (xs !== '' && zs !== '' && isFinite(xn) && isFinite(zn)) xz = [xn, zn];
       else if (xs !== '' || zs !== '') warn.partial.push(name + (code ? '' : '（未開業）'));
+      var xcs = z2h(g(iXC)), zcs = z2h(g(iZC)), xzC = null;
+      if (xcs !== '' && zcs !== '' && isFinite(parseFloat(xcs)) && isFinite(parseFloat(zcs))) xzC = [parseFloat(xcs), parseFloat(zcs)];
+      else if (xcs !== '' || zcs !== '') warn.partial.push(name + '（クリムゾン側）');
       var cls = parseInt(z2h(g(iCls)), 10);
-      out.push({ row: k, code: code, open: code !== '', name: name, yomi: g(iYomi), country: g(iCty), branch: g(iBr), cls: isFinite(cls) ? cls : 6, nums: nums, xz: xz });
+      out.push({ xzC: xzC, row: k, code: code, open: code !== '', name: name, yomi: g(iYomi), country: g(iCty), branch: g(iBr), cls: isFinite(cls) ? cls : 6, nums: nums, xz: xz });
     }
     return { rows: out, warn: warn };
   }
 
   /* ---------- graph ---------- */
   function buildGraph(rows) {
-    var st = {}, byName = {}, lines = {};
+    var st = {}, byName = {}, byNameAll = {}, lines = {};
     rows.forEach(function (r) {
       var id = r.open ? 'c' + r.code : 'u' + r.row;
       if (st[id]) id = id + '_' + r.row;
       r.id = id; st[id] = r; r.served = []; r.planned = [];
       if (r.open && !byName[r.name]) byName[r.name] = id;
+      if (!byNameAll[r.name] || (r.open && !st[byNameAll[r.name]].open)) byNameAll[r.name] = id;
       r.nums.forEach(function (num) {
         var m = num.match(/^(\d+)(?:-(\d+))?$/), b = +m[1], s = +(m[2] || 0), L = Math.floor(b / 100);
         (lines[L] = lines[L] || []).push({ b: b, s: s, id: id, open: r.open, num: num, code: r.open ? +r.code || 0 : 1e9 });
@@ -114,7 +120,7 @@ var RosenEngine = (function () {
         for (var i = 0; i + 1 < seq.length; i++) {
           var a = seq[i], c = seq[i + 1];
           if (a.open && c.open) continue;
-          if (!(a.open || st[a.id].xz) || !(c.open || st[c.id].xz)) continue;
+          if (!(a.open || st[a.id].xz || st[a.id].xzC) || !(c.open || st[c.id].xz || st[c.id].xzC)) continue;
           dashed.push([a.id, c.id, L, 'p']);
         }
       });
@@ -126,15 +132,15 @@ var RosenEngine = (function () {
       if (sid && p && n) { edges.push([p, sid, L, 'x']); edges.push([sid, n, L, 'x']); st[sid].served.push([L, num]); (routes[L] = routes[L] || []).push({ title: '速達車線', express: true, items: [{ id: p, num: '' }, { id: sid, num: num }, { id: n, num: '' }] }); }
     });
     var dups = Object.keys(dupNums).filter(function (k) { return dupNums[k].length > 1; }).map(function (k) { return k + '：' + dupNums[k].join('、'); });
-    return { st: st, byName: byName, edges: edges, dashed: dashed, dups: dups, routes: routes };
+    return { st: st, byName: byName, byNameAll: byNameAll, edges: edges, dashed: dashed, dups: dups, routes: routes };
   }
 
   /* ---------- gates ---------- */
   function splitGates(G) {
     var map = {};
     CFG.gates.forEach(function (g) {
-      var id = G.byName[g.name]; if (!id) return;
-      var crim = g.crimson.map(function (n) { return G.byName[n]; }).filter(Boolean);
+      var id = G.byNameAll[g.name]; if (!id) return;
+      var crim = g.crimson.map(function (n) { return G.byNameAll[n]; }).filter(Boolean);
       map[id] = crim;
     });
     function m(x, o) { if (!(x in map)) return x; return x + (map[x].indexOf(o) >= 0 ? '#C' : '#B'); }
@@ -153,7 +159,7 @@ var RosenEngine = (function () {
     function add(n) { if (!(n in idx)) { idx[n] = nodes.length; nodes.push(n); adj.push([]); } return idx[n]; }
     S.E.forEach(function (e) { var a = add(e[0]), b = add(e[1]); if (adj[a].indexOf(b) < 0) { adj[a].push(b); adj[b].push(a); } });
     var n = nodes.length;
-    var pin = nodes.map(function (x) { var s = G.st[base(x)]; return (!isGate(x) && s.xz) ? [-s.xz[0] / U, -s.xz[1] / U] : null; });
+    var pin = nodes.map(function (x) { var s = G.st[base(x)], c = /#C$/.test(x) ? s.xzC : s.xz; return c ? [-c[0] / U, -c[1] / U] : null; });
     // components
     var comp = new Int32Array(n).fill(-1), comps = [];
     for (var i = 0; i < n; i++) if (comp[i] < 0) { var c = [], q = [i]; comp[i] = comps.length; while (q.length) { var v = q.pop(); c.push(v); adj[v].forEach(function (w) { if (comp[w] < 0) { comp[w] = comps.length; q.push(w); } }); } comps.push(c); }
@@ -234,9 +240,10 @@ var RosenEngine = (function () {
     var blueRight = mean(gB, X) >= mean(gC, X);
     var edgeL = minX - 2, edgeR = maxX + 2;
     if (gB.length || gC.length) {
-      gB.forEach(function (i) { gx[i] = 1; gateX[i] = blueRight ? edgeR : edgeL; X[i] = gateX[i]; });
-      gC.forEach(function (i) { gx[i] = 1; gateX[i] = blueRight ? edgeL : edgeR; X[i] = gateX[i]; });
-      lo = edgeL + 1; hi = edgeR - 1;
+      var edgeUsed = false;
+      gB.forEach(function (i) { if (fixed[i]) return; edgeUsed = true; gx[i] = 1; gateX[i] = blueRight ? edgeR : edgeL; X[i] = gateX[i]; });
+      gC.forEach(function (i) { if (fixed[i]) return; edgeUsed = true; gx[i] = 1; gateX[i] = blueRight ? edgeL : edgeR; X[i] = gateX[i]; });
+      if (edgeUsed) { lo = edgeL + 1; hi = edgeR - 1; }
       deg2 = deg2.filter(function (i) { return !gx[i]; });
     }
     for (var k2 = 0; k2 < 12; k2++) { stress(60); yield { p: 0.4 + 0.3 * k2 / 12, t: '駅の位置を計算中' }; }
@@ -276,12 +283,15 @@ var RosenEngine = (function () {
       if (planned) { served = []; plannedN = s.nums.slice(); }
       return { id: id, name: s.name, side: side, yomi: s.yomi, country: s.country, branch: s.branch, cls: s.cls,
         x: Math.round((p[0] - ox) * SC * 10) / 10, y: Math.round(p[1] * SC * 10) / 10, nums: served, pnums: plannedN,
-        lines: Object.keys(Ls).map(Number).sort(function (a, b) { return a - b; }), gate: !!side, xz: (!side && s.xz) ? s.xz : null, planned: !!planned };
+        lines: Object.keys(Ls).map(Number).sort(function (a, b) { return a - b; }), gate: !!side, xz: side === 'クリムゾン側' ? s.xzC : s.xz, planned: !!planned };
     }
     Object.keys(Lr.pos).forEach(function (id) { nodes[id] = mk(id, Lr.pos[id]); });
     var bx = Infinity, by = -Infinity; Object.keys(nodes).forEach(function (k) { bx = Math.min(bx, nodes[k].x); by = Math.max(by, nodes[k].y); });
     // planned stations (with coordinates)
-    Object.keys(G.st).forEach(function (id) { var s = G.st[id]; if (!s.open && s.xz) { nodes[id] = mk(id, [-s.xz[0] / U, -s.xz[1] / U], true); by = Math.max(by, nodes[id].y); } });
+    Object.keys(G.st).forEach(function (id) { var s = G.st[id]; if (s.open) return;
+      var put = function (nid, c) { nodes[nid] = mk(nid, [-c[0] / U, -c[1] / U], true); by = Math.max(by, nodes[nid].y); };
+      if (S.gateIds[id]) { if (s.xz) put(id + '#B', s.xz); if (s.xzC) put(id + '#C', s.xzC); }
+      else if (s.xz) put(id, s.xz); });
     // loose components
     var small = [], cx = (isFinite(bx) ? bx : 0) + 60, cy = by + 260;
     Lr.loose.forEach(function (P) {
@@ -323,10 +333,18 @@ var RosenEngine = (function () {
     var routes = {};
     lines.forEach(function (L) {
       routes[L] = (G.routes[L] || []).map(function (sec) {
-        return { title: sec.title, express: !!sec.express, items: sec.items.map(function (it) { var s = G.st[it.id]; return { id: it.id, num: it.num, name: s.name, open: s.open, cls: s.cls, xz: s.xz }; }) };
+        var coord = function (a, b) { var s = G.st[a.id], cr = S.gateIds[a.id]; if (cr) return cr.indexOf(b.id) >= 0 ? s.xzC : s.xz; return s.xz; };
+        var dist = sec.items.map(function (it, i) { if (!i) return null; var p = sec.items[i - 1], A = coord(p, it), B = coord(it, p); return (A && B) ? Math.round(Math.abs(A[0] - B[0]) + Math.abs(A[1] - B[1])) / 1000 : null; });
+        return { title: sec.title, express: !!sec.express, dist: dist, items: sec.items.map(function (it) { var s = G.st[it.id]; return { id: it.id, num: it.num, name: s.name, open: s.open, cls: s.cls, gate: !!S.gateIds[it.id] }; }) };
       });
     });
-    return { routes: routes, nodes: arr, edges: edges, lines: lineinfo, term: term, W: Math.round((Lr.edgeR - Lr.edgeL) * SC), SC: SC, U: U, edgeL: Lr.edgeL, blueRight: Lr.blueRight, hasGates: Lr.hasGates,
+    var gateLines = [];
+    Object.keys(G.routes).forEach(function (Lk) { G.routes[Lk].forEach(function (sec) { sec.items.forEach(function (it, i) {
+      var cr = S.gateIds[it.id]; if (!cr) return; var p = sec.items[i - 1], q = sec.items[i + 1]; if (!p || !q) return;
+      var pc = cr.indexOf(p.id) >= 0, qc = cr.indexOf(q.id) >= 0;
+      if (pc !== qc && !gateLines.some(function (g) { return g.L === +Lk; })) gateLines.push({ L: +Lk, planned: !G.st[it.id].open });
+    }); }); });
+    return { gateLines: gateLines, routes: routes, nodes: arr, edges: edges, lines: lineinfo, term: term, W: Math.round((Lr.edgeR - Lr.edgeL) * SC), SC: SC, U: U, edgeL: Lr.edgeL, blueRight: Lr.blueRight, hasGates: Lr.hasGates,
       bounds: bounds, small: small,
       check: { stations: Object.keys(G.st).filter(function (k) { return G.st[k].open; }).length, xz: arr.filter(function (v) { return v.xz && !v.planned; }).length, planned: arr.filter(function (v) { return v.planned; }).length, dups: G.dups, partial: warn.partial, invalid: warn.invalid } };
   }
